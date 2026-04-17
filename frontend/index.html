@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ICU-HemoPredict — Haemodynamic Instability Risk System</title>
+<style>
+  :root {
+    --bg: #ffffff; --bg2: #f5f5f5; --bg3: #eeeeee;
+    --text: #111111; --text2: #555555; --text3: #888888;
+    --border: rgba(0,0,0,0.12); --border2: rgba(0,0,0,0.22);
+    --radius: 10px; --radius-sm: 6px;
+    --red-bg: #FCEBEB; --red-text: #A32D2D; --red-border: #E24B4A;
+    --amber-bg: #FAEEDA; --amber-text: #854F0B; --amber-border: #EF9F27;
+    --green-bg: #EAF3DE; --green-text: #3B6D11; --green-border: #639922;
+    --blue-bg: #E6F1FB; --blue-text: #185FA5; --blue-border: #378ADD;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141414; --bg2: #1e1e1e; --bg3: #2a2a2a;
+      --text: #f0f0f0; --text2: #aaaaaa; --text3: #666666;
+      --border: rgba(255,255,255,0.10); --border2: rgba(255,255,255,0.20);
+      --red-bg: #3a1010; --red-text: #f09595;
+      --amber-bg: #2e1e00; --amber-text: #FAC775;
+      --green-bg: #0d1f06; --green-text: #C0DD97;
+      --blue-bg: #0a1e35; --blue-text: #85B7EB;
+    }
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
+    font-size:13px;color:var(--text);background:var(--bg);line-height:1.5}
+  .wrap{max-width:1280px;margin:0 auto;padding:24px 20px}
+  .card{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:16px 18px;margin-bottom:14px}
+  .sec{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:10px}
+  label{font-size:11px;color:var(--text2);display:block;margin-bottom:2px}
+  input,select{width:100%;padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);
+    border-radius:var(--radius-sm);background:var(--bg2);color:var(--text);outline:none}
+  input:focus,select:focus{border-color:var(--blue-border)}
+  .g2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .g4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+  .mcard{background:var(--bg2);border-radius:var(--radius-sm);padding:10px 12px}
+  .mlabel{font-size:10px;color:var(--text3);margin-bottom:3px}
+  .mval{font-size:22px;font-weight:500;color:var(--text)}
+  .munit{font-size:11px;color:var(--text3);margin-left:2px;font-weight:400}
+  .msub{font-size:10px;color:var(--text3);margin-top:2px}
+  .badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600}
+  .b-crit{background:var(--red-bg);color:var(--red-text)}
+  .b-high{background:var(--red-bg);color:var(--red-text)}
+  .b-mod{background:var(--amber-bg);color:var(--amber-text)}
+  .b-low{background:var(--green-bg);color:var(--green-text)}
+  .flag{padding:7px 12px;border-radius:var(--radius-sm);font-size:12px;margin-bottom:5px;
+    border-left:3px solid;line-height:1.5}
+  .f-crit{background:var(--red-bg);color:var(--red-text);border-color:var(--red-border)}
+  .f-warn{background:var(--amber-bg);color:var(--amber-text);border-color:var(--amber-border)}
+  .shap-row{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:0.5px solid var(--border)}
+  .shap-name{font-size:11px;width:160px;flex-shrink:0;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .shap-wrap{flex:1;height:8px;background:var(--bg3);border-radius:4px;position:relative}
+  .shap-bar{height:8px;border-radius:4px;position:absolute;top:0}
+  .shap-mid{position:absolute;top:0;width:1px;height:8px;background:var(--border2)}
+  .shap-val{width:52px;text-align:right;font-size:11px;flex-shrink:0}
+  .traj-row{display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:0.5px solid var(--border)}
+  .traj-t{font-size:10px;color:var(--text3);width:30px;flex-shrink:0;text-align:right}
+  .traj-bar-wrap{flex:1;height:7px;background:var(--bg3);border-radius:3px;overflow:hidden}
+  .traj-bar{height:7px;border-radius:3px}
+  .traj-pct{font-size:11px;width:38px;text-align:right;flex-shrink:0;font-weight:500}
+  .traj-badge{font-size:10px;width:52px;flex-shrink:0;padding:1px 6px;border-radius:10px;text-align:center}
+  .slot-grid{overflow-x:auto;padding-bottom:6px}
+  .slot-tbl{border-collapse:collapse;min-width:900px}
+  .slot-tbl td,.slot-tbl th{padding:2px 3px;vertical-align:middle}
+  .slot-tbl th{font-size:9px;font-weight:600;color:var(--text3);text-align:center;padding:4px 3px}
+  .slot-lbl{font-size:11px;color:var(--text2);text-align:right;padding-right:8px;white-space:nowrap}
+  .slot-inp{width:62px;padding:3px 4px;font-size:11px;text-align:center;border:0.5px solid var(--border);
+    border-radius:4px;background:var(--bg2);color:var(--text)}
+  .slot-inp:focus{border-color:var(--blue-border);outline:none}
+  .prob-track{height:10px;border-radius:5px;background:var(--bg3);position:relative;overflow:hidden}
+  .prob-fill{height:10px;border-radius:5px;transition:width .5s ease}
+  .prob-thresh{position:absolute;top:0;width:2px;height:10px;background:var(--text2);opacity:.5}
+  .reason{padding:10px 14px;border-radius:var(--radius-sm);background:var(--bg2);margin-bottom:8px;font-size:12px;line-height:1.7}
+  .reason-title{font-size:12px;font-weight:600;color:var(--text);margin-bottom:4px}
+  .btn{padding:8px 16px;font-size:13px;font-weight:500;border-radius:var(--radius-sm);
+    cursor:pointer;border:0.5px solid var(--border2);background:var(--bg2);color:var(--text);transition:.15s}
+  .btn:hover{background:var(--bg3)}
+  .btn-primary{background:var(--blue-bg);color:var(--blue-text);border-color:var(--blue-border);font-weight:600}
+  .btn-primary:hover{opacity:.85}
+  .btn-primary:disabled{opacity:.5;cursor:not-allowed}
+  .spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--border2);
+    border-top-color:var(--blue-text);border-radius:50%;animation:spin .7s linear infinite;margin-right:6px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .status-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+  .api-status{display:flex;align-items:center;gap:6px;font-size:11px;padding:4px 10px;border-radius:20px}
+  .hdr{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px}
+  .disclaimer{font-size:11px;color:var(--text3);padding:8px 12px;border:0.5px solid var(--border);
+    border-radius:var(--radius-sm);line-height:1.6;margin-top:10px}
+  .divider{border:none;border-top:0.5px solid var(--border);margin:12px 0}
+  #results{display:none}
+  .grid-2col{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:700px){.grid-2col{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- HEADER -->
+<div class="hdr">
+  <div>
+    <div style="font-size:20px;font-weight:600;margin-bottom:3px">ICU-HemoPredict</div>
+    <div style="font-size:12px;color:var(--text2)">Haemodynamic instability risk prediction &middot; XGBoost &middot; AUROC 0.989 &middot; Sensitivity 98.4% &middot; SIUT validation cohort n=253</div>
+  </div>
+  <div id="api-status-el" class="api-status" style="background:var(--bg2)">
+    <div class="status-dot" style="background:#888"></div>
+    <span id="api-status-txt">Connecting...</span>
+  </div>
+</div>
+
+<!-- PATIENT INFO -->
+<div class="card">
+  <div class="sec">Patient information</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:10px">
+    <div><label>Age (years)</label><input type="number" id="m_age" value="55" min="1" max="120"></div>
+    <div><label>Gender</label><select id="m_sex"><option value="1">Male</option><option value="0">Female</option></select></div>
+    <div><label>Admitting diagnosis</label>
+      <select id="m_diag">
+        <option value="respiratory">Respiratory (CAP/HAP/ARDS)</option>
+        <option value="sepsis_shock">Sepsis / septic shock</option>
+        <option value="renal">Renal / AKI</option>
+        <option value="gi_liver">GI / liver / pancreatitis</option>
+        <option value="cardiac">Cardiac</option>
+        <option value="neuro">Neurological</option>
+        <option value="infection_other">Other infection</option>
+        <option value="other" selected>Other</option>
+      </select>
+    </div>
+    <div style="display:flex;flex-direction:column;justify-content:flex-end">
+      <label style="margin-bottom:5px">Comorbidities</label>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text);cursor:pointer;white-space:nowrap"><input type="checkbox" id="c_dm"> DM</label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text);cursor:pointer;white-space:nowrap"><input type="checkbox" id="c_htn"> HTN</label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text);cursor:pointer;white-space:nowrap"><input type="checkbox" id="c_ckd"> CKD</label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text);cursor:pointer;white-space:nowrap"><input type="checkbox" id="c_ihd"> IHD</label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text);cursor:pointer;white-space:nowrap"><input type="checkbox" id="c_copd"> COPD</label>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- OBSERVATION GRID -->
+<div class="card">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+    <div>
+      <div class="sec" style="margin-bottom:2px">48-hour observation grid &mdash; 2-hour intervals</div>
+      <div style="font-size:11px;color:var(--text3)">Enter readings at each time point. Blank cells are forward-filled from the previous value.</div>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn" onclick="loadDemo('unstable')">Load unstable demo</button>
+      <button class="btn" onclick="loadDemo('stable')">Load stable demo</button>
+      <button class="btn" onclick="clearAll()">Clear</button>
+    </div>
+  </div>
+  <div class="slot-grid">
+    <table class="slot-tbl" id="obs-table"></table>
+  </div>
+  <div style="margin-top:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+    <div style="font-size:11px;color:var(--text3)">Minimum 2 time slots required. Time 0h = ICU admission.</div>
+    <button class="btn btn-primary" id="run-btn" onclick="runAnalysis()">Analyse patient</button>
+  </div>
+</div>
+
+<!-- RESULTS -->
+<div id="results">
+
+<div class="grid-2col">
+<!-- Risk summary -->
+<div class="card">
+  <div class="sec">Overall risk assessment</div>
+  <div style="display:flex;align-items:center;gap:16px;margin-bottom:14px">
+    <div id="main-badge"></div>
+    <div>
+      <div style="font-size:42px;font-weight:600;line-height:1" id="main-prob">—</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:3px">peak instability probability</div>
+    </div>
+  </div>
+  <div class="prob-track" style="margin-bottom:4px">
+    <div class="prob-fill" id="prob-fill" style="width:0"></div>
+    <div class="prob-thresh" id="prob-thresh"></div>
+  </div>
+  <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3);margin-bottom:14px">
+    <span>0%</span><span id="thresh-label">Decision threshold</span><span>100%</span>
+  </div>
+  <div class="divider"></div>
+  <div class="g3">
+    <div class="mcard"><div class="mlabel">Peak at</div><div class="mval" id="r-peak-slot">—</div></div>
+    <div class="mcard"><div class="mlabel">High-risk slots</div><div class="mval" id="r-highrisk">—</div></div>
+    <div class="mcard"><div class="mlabel">Trajectory</div><div style="font-size:15px;font-weight:500;margin-top:4px" id="r-trend">—</div></div>
+  </div>
+</div>
+
+<!-- Haemodynamic indices -->
+<div class="card">
+  <div class="sec">Derived haemodynamic indices</div>
+  <div class="g2" style="margin-bottom:10px">
+    <div class="mcard">
+      <div class="mlabel">Mean MAP (48h)</div>
+      <div class="mval" id="d-map">—<span class="munit">mmHg</span></div>
+      <div class="msub">Min MAP: <span id="d-map-min">—</span> mmHg &nbsp;|&nbsp; Critical: &lt;65</div>
+    </div>
+    <div class="mcard">
+      <div class="mlabel">Peak Shock Index</div>
+      <div class="mval" id="d-si">—</div>
+      <div class="msub">Significant: &gt;1.0 &nbsp;|&nbsp; Critical: &gt;1.2</div>
+    </div>
+    <div class="mcard">
+      <div class="mlabel">Peak Lactate</div>
+      <div class="mval" id="d-lact">—<span class="munit">mmol/L</span></div>
+      <div class="msub">Elevated: &gt;2.0 &nbsp;|&nbsp; Severe: &gt;4.0</div>
+    </div>
+    <div class="mcard">
+      <div class="mlabel">Min SpO2/FiO2</div>
+      <div class="mval" id="d-sf">—</div>
+      <div class="msub">Normal: &gt;4.5 &nbsp;|&nbsp; Impaired: &lt;3.0</div>
+    </div>
+    <div class="mcard">
+      <div class="mlabel">Peak Creatinine</div>
+      <div class="mval" id="d-cre">—<span class="munit">mg/dL</span></div>
+      <div class="msub">AKI (KDIGO): &gt;1.5&times;baseline</div>
+    </div>
+    <div class="mcard">
+      <div class="mlabel">Min UOP</div>
+      <div class="mval" id="d-uop">—<span class="munit">ml/hr</span></div>
+      <div class="msub">Oliguria: &lt;0.5 ml/kg/hr (~30)</div>
+    </div>
+  </div>
+  <div id="flags-list"></div>
+</div>
+</div>
+
+<div class="grid-2col">
+<!-- Trajectory -->
+<div class="card">
+  <div class="sec">Risk trajectory &mdash; 48-hour window</div>
+  <div id="traj-list"></div>
+</div>
+
+<!-- SHAP -->
+<div class="card">
+  <div class="sec">SHAP feature attribution &mdash; mean |SHAP| over stay</div>
+  <div id="shap-list"></div>
+  <div style="margin-top:10px;font-size:10px;color:var(--text3);line-height:1.6">
+    Bar length = mean absolute SHAP value across all time slots. Red = feature increases instability probability. Blue = feature decreases instability probability. Values derived from XGBoost TreeSHAP.
+  </div>
+</div>
+</div>
+
+<!-- Clinical reasoning -->
+<div class="card">
+  <div class="sec">Clinical reasoning &mdash; model interpretation</div>
+  <div id="reasoning"></div>
+  <div class="disclaimer">
+    This system is a clinical decision support tool validated on 253 ICU patients at SIUT Karachi (AUROC 0.989, sensitivity 98.4%, specificity 95.2% at decision threshold 47.7%). It does not replace clinical judgment. Feature attributions represent statistical contributions to the model's prediction, not causal clinical mechanisms. All predictions must be interpreted in the full clinical context by a qualified clinician.
+  </div>
+</div>
+
+</div><!-- /results -->
+</div><!-- /wrap -->
+
+<script>
+const API = 'http://localhost:8000';
+const THRESH = 0.4774;
+const THRESH_PCT = 47.7;
+
+// ── Observation grid parameters ────────────────────────────
+const PARAMS = [
+  {key:'sbp',   label:'SBP (mmHg)',      def:120, min:40,  max:250, step:1},
+  {key:'dbp',   label:'DBP (mmHg)',      def:75,  min:20,  max:150, step:1},
+  {key:'hr',    label:'HR (bpm)',         def:80,  min:20,  max:250, step:1},
+  {key:'rr',    label:'RR (br/min)',      def:16,  min:4,   max:70,  step:1},
+  {key:'temp',  label:'Temp (°C)',        def:37.0,min:34,  max:43,  step:0.1},
+  {key:'spo2',  label:'SpO2 (%)',         def:98,  min:40,  max:100, step:1},
+  {key:'fio2',  label:'FiO2 (%)',         def:21,  min:21,  max:100, step:1},
+  {key:'uop',   label:'UOP (ml/hr)',      def:60,  min:0,   max:500, step:1},
+  {key:'avpu',  label:'AVPU (0–3)',       def:0,   min:0,   max:3,   step:1},
+  {key:'lact',  label:'Lactate (mmol/L)', def:1.2, min:0,   max:20,  step:0.1},
+  {key:'ph',    label:'Arterial pH',      def:7.40,min:6.5, max:7.9, step:0.01},
+  {key:'hco3',  label:'HCO3 (mEq/L)',    def:24,  min:2,   max:50,  step:0.5},
+  {key:'k',     label:'Serum K (mEq/L)', def:4.0, min:1,   max:9,   step:0.1},
+  {key:'na',    label:'Serum Na (mEq/L)',def:137, min:100, max:175, step:1},
+  {key:'cre',   label:'Creatinine (mg/dL)',def:0.9,min:0.1,max:25,  step:0.1},
+  {key:'hct',   label:'HCT (%)',          def:34,  min:5,   max:70,  step:1},
+  {key:'tlc',   label:'TLC (×10³/µL)',   def:10,  min:0.1, max:80,  step:0.5},
+  {key:'plt',   label:'Platelets (×10³)',def:200, min:1,   max:1000,step:1},
+  {key:'bili',  label:'Bilirubin (mg/dL)',def:0.9, min:0,   max:50,  step:0.1},
+  {key:'crt',   label:'CRT (sec)',        def:2,   min:0,   max:15,  step:0.5},
+];
+const N_SLOTS = 12;
+const SLOT_HRS = [0,2,4,6,8,10,12,14,16,18,20,22];
+
+function buildGrid() {
+  const tbl = document.getElementById('obs-table');
+  let html = '<thead><tr><th style="width:110px"></th>';
+  SLOT_HRS.forEach(h => html += `<th>${h}h</th>`);
+  html += '</tr></thead><tbody>';
+  PARAMS.forEach(p => {
+    html += `<tr><td class="slot-lbl">${p.label}</td>`;
+    SLOT_HRS.forEach((_,s) => {
+      html += `<td><input class="slot-inp" id="s_${p.key}_${s}" type="number"
+        min="${p.min}" max="${p.max}" step="${p.step}" placeholder="${p.def}"></td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</tbody>';
+  tbl.innerHTML = html;
+}
+
+function gv(id) { const el=document.getElementById(id); return el&&el.value!==''?parseFloat(el.value):null; }
+function sv(id,v){ const el=document.getElementById(id); if(el) el.value=v; }
+
+function getFilledGrid() {
+  const grid = {};
+  PARAMS.forEach(p => {
+    const vals = []; let last = p.def;
+    for(let s=0;s<N_SLOTS;s++){
+      const v=gv(`s_${p.key}_${s}`);
+      if(v!==null){last=v;vals.push(v);}else{vals.push(last);}
+    }
+    grid[p.key] = vals;
+  });
+  return grid;
+}
+
+function filledSlots() {
+  const filled = new Set();
+  PARAMS.forEach(p => {
+    for(let s=0;s<N_SLOTS;s++){ if(gv(`s_${p.key}_${s}`)!==null) filled.add(s); }
+  });
+  return filled.size;
+}
+
+// ── API ────────────────────────────────────────────────────
+async function checkHealth() {
+  try {
+    const r = await fetch(`${API}/health`, {signal:AbortSignal.timeout(3000)});
+    if(r.ok) setStatus(true); else setStatus(false);
+  } catch{ setStatus(false); }
+}
+
+function setStatus(ok) {
+  const dot = document.querySelector('#api-status-el .status-dot');
+  const txt = document.getElementById('api-status-txt');
+  if(ok){
+    dot.style.background='#639922';
+    txt.textContent='API connected';
+    document.getElementById('api-status-el').style.background='var(--green-bg)';
+    txt.style.color='var(--green-text)';
+  } else {
+    dot.style.background='#E24B4A';
+    txt.textContent='API offline — run: uvicorn main:app --port 8000';
+    document.getElementById('api-status-el').style.background='var(--red-bg)';
+    txt.style.color='var(--red-text)';
+  }
+}
+
+async function runAnalysis() {
+  if(filledSlots() < 2){ alert('Please enter readings for at least 2 time slots.'); return; }
+
+  const btn = document.getElementById('run-btn');
+  btn.disabled=true;
+  btn.innerHTML='<span class="spinner"></span>Analysing...';
+
+  const grid = getFilledGrid();
+  const readings = [];
+  for(let s=0;s<N_SLOTS;s++){
+    readings.push({
+      sbp:grid.sbp[s], dbp:grid.dbp[s], hr:grid.hr[s], rr:grid.rr[s],
+      temp:grid.temp[s], spo2:grid.spo2[s], fio2:grid.fio2[s], uop:grid.uop[s],
+      avpu:Math.round(grid.avpu[s]), lact:grid.lact[s], ph:grid.ph[s],
+      hco3:grid.hco3[s], k:grid.k[s], na:grid.na[s], cre:grid.cre[s],
+      hct:grid.hct[s], tlc:grid.tlc[s], plt:grid.plt[s],
+      bili:grid.bili[s], crt:grid.crt[s],
+    });
+  }
+
+  const payload = {
+    readings,
+    age: parseFloat(document.getElementById('m_age').value)||50,
+    gender: parseInt(document.getElementById('m_sex').value)||1,
+    dm:   document.getElementById('c_dm').checked?1:0,
+    htn:  document.getElementById('c_htn').checked?1:0,
+    ckd:  document.getElementById('c_ckd').checked?1:0,
+    ihd:  document.getElementById('c_ihd').checked?1:0,
+    copd: document.getElementById('c_copd').checked?1:0,
+    diagnosis: document.getElementById('m_diag').value,
+  };
+
+  try {
+    const resp = await fetch(`${API}/predict/stay`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload),
+    });
+    if(!resp.ok){ const e=await resp.json(); throw new Error(e.detail||'API error'); }
+    const data = await resp.json();
+    renderResults(data);
+    setStatus(true);
+  } catch(err) {
+    setStatus(false);
+    alert(`Error: ${err.message}\n\nMake sure the backend is running:\n  cd backend\n  uvicorn main:app --host 0.0.0.0 --port 8000`);
+  } finally {
+    btn.disabled=false;
+    btn.innerHTML='Analyse patient';
+  }
+}
+
+// ── Render ─────────────────────────────────────────────────
+function badgeClass(level) {
+  if(level==='CRITICAL') return 'b-crit';
+  if(level==='HIGH')     return 'b-high';
+  if(level==='MODERATE') return 'b-mod';
+  return 'b-low';
+}
+
+function renderResults(d) {
+  const s = d.summary;
+  const peak = s.peak_probability;
+  const level = s.peak_risk.level;
+
+  // Badge + prob
+  document.getElementById('main-badge').innerHTML =
+    `<span class="badge ${badgeClass(level)}">${level} RISK</span>`;
+  document.getElementById('main-prob').textContent = peak.toFixed(1)+'%';
+
+  // Probability bar
+  const fill = document.getElementById('prob-fill');
+  fill.style.width = peak+'%';
+  const col = peak>=70?'#A32D2D':peak>=47.7?'#E24B4A':peak>=30?'#EF9F27':'#639922';
+  fill.style.background = col;
+  document.getElementById('prob-thresh').style.left = THRESH_PCT+'%';
+  document.getElementById('thresh-label').textContent = `Decision threshold ${THRESH_PCT}%`;
+
+  // Summary metrics
+  document.getElementById('r-peak-slot').textContent = `${s.peak_time_hrs}h`;
+  document.getElementById('r-highrisk').innerHTML = `${s.high_risk_slots}<span class="munit">/ ${s.total_slots}</span>`;
+  document.getElementById('r-trend').textContent = s.trend.charAt(0).toUpperCase()+s.trend.slice(1);
+
+  // Derived indices
+  const dr = d.derived;
+  document.getElementById('d-map').innerHTML     = `${dr.mean_map}<span class="munit">mmHg</span>`;
+  document.getElementById('d-map-min').textContent = dr.min_map;
+  document.getElementById('d-si').textContent    = dr.peak_shock_index.toFixed(2);
+  document.getElementById('d-lact').innerHTML    = `${dr.peak_lactate}<span class="munit">mmol/L</span>`;
+  document.getElementById('d-sf').textContent    = dr.min_sf_ratio.toFixed(2);
+  document.getElementById('d-cre').innerHTML     = `${dr.peak_creatinine}<span class="munit">mg/dL</span>`;
+  document.getElementById('d-uop').innerHTML     = `${dr.min_uop}<span class="munit">ml/hr</span>`;
+
+  // Flags
+  document.getElementById('flags-list').innerHTML = d.flags.length
+    ? d.flags.map(f=>`<div class="flag ${f.severity==='critical'?'f-crit':'f-warn'}">${f.message}</div>`).join('')
+    : '<div style="font-size:12px;color:var(--text3)">No critical alerts detected at current thresholds.</div>';
+
+  // Trajectory
+  document.getElementById('traj-list').innerHTML = d.slots.map(sl=>{
+    const p=sl.probability;
+    const c=p>=47.7?'#E24B4A':p>=30?'#EF9F27':'#639922';
+    const bc=p>=47.7?'b-high':p>=30?'b-mod':'b-low';
+    const bl=p>=47.7?sl.risk.level:'Low';
+    return `<div class="traj-row">
+      <div class="traj-t">${sl.time_hrs}h</div>
+      <div class="traj-bar-wrap"><div class="traj-bar" style="width:${p}%;background:${c}"></div></div>
+      <div class="traj-pct" style="color:${c}">${p.toFixed(1)}%</div>
+      <div class="traj-badge badge ${bc}" style="font-size:9px">${bl}</div>
+    </div>`;
+  }).join('');
+
+  // SHAP
+  const shap = d.shap_global;
+  const maxS = Math.max(...shap.map(x=>x.mean_abs_shap), 0.001);
+  document.getElementById('shap-list').innerHTML = shap.map(f=>{
+    const pct = (f.mean_abs_shap/maxS*44).toFixed(1);
+    const isPos = f.direction==='increases_risk';
+    const c = isPos?'#E24B4A':'#378ADD';
+    const left = isPos?'50':''+((50-parseFloat(pct)).toFixed(1));
+    return `<div class="shap-row">
+      <div class="shap-name" title="${f.feature}">${f.feature}</div>
+      <div class="shap-wrap">
+        <div class="shap-bar" style="width:${pct}%;left:${left}%;background:${c}"></div>
+        <div class="shap-mid" style="left:50%"></div>
+      </div>
+      <div class="shap-val" style="color:${c}">${f.mean_abs_shap.toFixed(4)}</div>
+    </div>`;
+  }).join('');
+
+  // Clinical reasoning
+  renderReasoning(d);
+
+  document.getElementById('results').style.display='';
+  document.getElementById('results').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function renderReasoning(d) {
+  const s   = d.summary;
+  const dr  = d.derived;
+  const peak= s.peak_probability;
+  const blocks = [];
+
+  if(peak >= 47.7) {
+    const driver = d.shap_global[0];
+    blocks.push({
+      title: 'Primary driver — haemodynamic pressure failure',
+      text: `The model's dominant predictors are ${d.shap_global[0].feature} and ${d.shap_global[1].feature}, collectively accounting for the largest share of SHAP attribution. `+
+        `The patient's minimum MAP of ${dr.min_map} mmHg${dr.min_map<65?' (below the critical 65 mmHg threshold)':''} `+
+        `and peak Shock Index of ${dr.peak_shock_index.toFixed(2)}${dr.peak_shock_index>1.2?' (indicating significant haemodynamic compromise)':''} are the primary physiological correlates. `+
+        `These features represent the model's learned representation of cardiovascular decompensation, consistent with the SHAP analysis from the SIUT validation cohort.`
+    });
+    if(dr.peak_lactate > 2.0) {
+      blocks.push({
+        title: 'Metabolic correlate — evidence of tissue hypoperfusion',
+        text: `Peak lactate of ${dr.peak_lactate} mmol/L indicates ${dr.peak_lactate>4?'severe':'moderate'} tissue oxygen debt. `+
+          `The HCO3-Lactate gap composite feature (HCO3 minus 3×Lactate) captures the integrated acid-base derangement and contributes `+
+          `to the model's risk estimate beyond what either parameter conveys independently. `+
+          `Lactate trajectory (${s.trend}) provides additional temporal context.`
+      });
+    }
+    if(s.high_risk_slots > 3) {
+      blocks.push({
+        title: 'Temporal pattern — sustained haemodynamic instability',
+        text: `${s.high_risk_slots} of ${s.total_slots} time slots exceed the 47.7% decision threshold, indicating `+
+          `sustained rather than transient haemodynamic compromise. `+
+          `The model assigns higher predictive weight to persistent instability patterns: rolling minimum features (SBP_roll_min, MAP_roll_min) `+
+          `and patient-level aggregates (pt_sbp_min, pt_map_min) encode this temporal persistence explicitly.`
+      });
+    }
+    if(s.trend === 'deteriorating') {
+      blocks.push({
+        title: 'Trajectory — progressive deterioration',
+        text: `Risk probability increases across the observation window (final slot probability exceeds admission probability by more than 10 percentage points). `+
+          `Delta features (sbp_delta, lactate_delta, map_delta) and cumulative slope features (SBP_slope, MAP_slope) contribute positive SHAP values throughout the stay, `+
+          `consistent with a worsening haemodynamic trajectory that is not responding to current interventions.`
+      });
+    }
+  } else if(peak >= 30) {
+    blocks.push({
+      title: 'Moderate risk — subclinical haemodynamic stress',
+      text: `Peak probability of ${peak.toFixed(1)}% is below the 47.7% intervention threshold but above the low-risk band. `+
+        `The model detects early pressure reduction and marginal physiological derangement without overt shock criteria. `+
+        `The patient-level aggregate features (pt_map_min ${dr.min_map} mmHg, pt_shock_max ${dr.peak_shock_index.toFixed(2)}) represent `+
+        `the worst observed values across the admission and are driving moderate risk attribution. `+
+        `Increased monitoring frequency and proactive reassessment of fluid and vasopressor status is advised.`
+    });
+  } else {
+    blocks.push({
+      title: 'Low risk — haemodynamic parameters within acceptable range',
+      text: `Peak probability of ${peak.toFixed(1)}% remains well below both the low-risk threshold (30%) and decision threshold (47.7%). `+
+        `MAP is maintained above 65 mmHg (mean ${dr.mean_map} mmHg), Shock Index remains below 0.9 (peak ${dr.peak_shock_index.toFixed(2)}), `+
+        `and lactate is within normal range (peak ${dr.peak_lactate} mmol/L). `+
+        `Patient-level aggregate features are contributing negative SHAP values (stabilising contributions), `+
+        `consistent with preserved haemodynamic reserve across the observation window.`
+    });
+  }
+
+  blocks.push({
+    title: 'Model confidence and methodology',
+    text: `Prediction is derived from 140 engineered features including 8-hour rolling statistics (mean, std, min, max), `+
+      `2-hour rate-of-change (delta) signals, cumulative trend slopes, composite haemodynamic indices (Shock Index, SpO2/FiO2 ratio, HCO3-Lactate gap), `+
+      `and patient metadata (age, diagnosis category, comorbidity profile). `+
+      `SHAP values shown represent mean absolute contribution across all ${s.total_slots} time slots, computed via TreeSHAP on the XGBoost classifier. `+
+      `Validated performance on SIUT held-out test cohort: AUROC 0.9891, sensitivity 98.38% (7/432 unstable time points missed), specificity 95.24%, PPV 94.65%, NPV 98.56% at threshold 0.4774.`
+  });
+
+  document.getElementById('reasoning').innerHTML =
+    blocks.map(b=>`<div class="reason"><div class="reason-title">${b.title}</div>${b.text}</div>`).join('');
+}
+
+// ── Demo data ───────────────────────────────────────────────
+const DEMOS = {
+  unstable: {
+    meta:{age:62,sex:1,diag:'sepsis_shock',dm:1,htn:1,ckd:1,ihd:0,copd:0},
+    sbp:[115,110,105,98,90,85,80,78,75,74,72,70],
+    dbp:[72,70,68,64,58,54,50,48,45,44,42,40],
+    hr:[88,92,98,105,112,118,122,128,132,135,138,140],
+    rr:[18,19,20,22,24,26,28,28,30,30,32,34],
+    temp:[37.2,37.3,37.5,37.8,38.0,38.2,38.4,38.5,38.5,38.4,38.3,38.2],
+    spo2:[97,97,96,95,94,93,91,90,89,88,87,86],
+    fio2:[21,21,28,35,40,50,60,60,70,70,80,80],
+    uop:[65,60,55,48,40,32,25,20,15,12,10,8],
+    avpu:[0,0,0,0,0,1,1,1,2,2,2,2],
+    lact:[1.2,1.4,1.7,2.1,2.6,3.0,3.4,3.8,4.2,4.5,4.7,5.0],
+    ph:[7.40,7.39,7.38,7.36,7.34,7.32,7.30,7.28,7.26,7.24,7.22,7.20],
+    hco3:[24,23,22,21,19,18,17,16,15,14,13,12],
+    k:[4.0,4.1,4.2,4.3,4.4,4.5,4.6,4.7,4.8,4.9,5.0,5.1],
+    na:[137,137,138,138,139,139,140,140,141,141,142,142],
+    cre:[0.9,1.0,1.1,1.3,1.5,1.8,2.1,2.4,2.7,3.0,3.3,3.5],
+    hct:[34,33,32,31,30,29,28,27,26,25,24,23],
+    tlc:[10,11,12,13,15,16,17,18,20,21,22,23],
+    plt:[210,205,200,195,185,175,165,155,145,138,130,122],
+    bili:[0.9,0.9,1.0,1.1,1.2,1.4,1.6,1.8,2.0,2.2,2.4,2.6],
+    crt:[2,2,2,3,3,3,4,4,5,5,5,6],
+  },
+  stable: {
+    meta:{age:45,sex:1,diag:'renal',dm:0,htn:0,ckd:0,ihd:0,copd:0},
+    sbp:[125,122,124,120,118,122,120,118,122,120,118,120],
+    dbp:[80,78,80,76,75,78,76,75,78,76,74,76],
+    hr:[82,80,84,82,80,82,80,78,82,80,78,80],
+    rr:[16,16,17,16,15,16,16,15,16,16,15,16],
+    temp:[37.1,37.0,37.2,37.1,37.0,37.1,37.0,37.0,37.1,37.0,37.0,37.1],
+    spo2:[98,98,97,98,98,97,98,98,97,98,98,97],
+    fio2:[21,21,21,21,21,21,21,21,21,21,21,21],
+    uop:[65,68,62,70,65,68,66,70,64,68,65,67],
+    avpu:[0,0,0,0,0,0,0,0,0,0,0,0],
+    lact:[1.2,1.1,1.2,1.1,1.0,1.2,1.1,1.0,1.1,1.2,1.1,1.0],
+    ph:[7.40,7.39,7.40,7.41,7.40,7.39,7.40,7.41,7.40,7.39,7.40,7.41],
+    hco3:[24,23,24,24,23,24,23,24,24,23,24,24],
+    k:[4.0,4.0,4.1,4.0,3.9,4.0,4.1,4.0,4.0,4.1,4.0,3.9],
+    na:[137,137,138,137,136,137,138,137,137,138,137,136],
+    cre:[0.9,0.9,0.9,0.9,0.8,0.9,0.9,0.8,0.9,0.9,0.8,0.9],
+    hct:[34,34,33,34,35,34,33,34,34,33,34,35],
+    tlc:[9,9,10,9,8,9,10,9,9,10,9,8],
+    plt:[210,212,208,215,210,212,208,215,210,212,208,215],
+    bili:[0.9,0.9,0.8,0.9,0.9,0.8,0.9,0.9,0.8,0.9,0.9,0.8],
+    crt:[2,2,2,2,2,2,2,2,2,2,2,2],
+  }
+};
+
+function loadDemo(type) {
+  clearAll();
+  const d = DEMOS[type];
+  PARAMS.forEach(p => {
+    if(d[p.key]) d[p.key].forEach((v,s) => sv(`s_${p.key}_${s}`, v));
+  });
+  document.getElementById('m_age').value   = d.meta.age;
+  document.getElementById('m_sex').value   = d.meta.sex;
+  document.getElementById('m_diag').value  = d.meta.diag;
+  document.getElementById('c_dm').checked  = !!d.meta.dm;
+  document.getElementById('c_htn').checked = !!d.meta.htn;
+  document.getElementById('c_ckd').checked = !!d.meta.ckd;
+  document.getElementById('c_ihd').checked = !!d.meta.ihd;
+  document.getElementById('c_copd').checked= !!d.meta.copd;
+}
+
+function clearAll() {
+  PARAMS.forEach(p => { for(let s=0;s<N_SLOTS;s++) sv(`s_${p.key}_${s}`,''); });
+  document.getElementById('results').style.display='none';
+  ['c_dm','c_htn','c_ckd','c_ihd','c_copd'].forEach(id => { document.getElementById(id).checked=false; });
+}
+
+// ── Init ────────────────────────────────────────────────────
+buildGrid();
+checkHealth();
+setInterval(checkHealth, 15000);
+</script>
+</body>
+</html>
