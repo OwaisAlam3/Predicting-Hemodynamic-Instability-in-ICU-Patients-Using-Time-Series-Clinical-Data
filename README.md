@@ -1,27 +1,22 @@
-# ICU-HemoPredict
+# ICU-HemoPredict v3
 
 **Haemodynamic Instability Risk Prediction for ICU Patients**
 
-Final Year Design Project — Group 17, CS Batch 2022  
-NED University of Engineering & Technology  
-Industrial Partner: Sindh Institute of Urology & Transplantation (SIUT), Karachi
+NED University of Engineering & Technology — Group 17, CS Batch 2022  
+Industrial Partner: Sindh Institute of Urology & Transplantation (SIUT), Karachi  
+Supervisor: Dr. Syed Zaffar Qasim | Industrial Advisor: Prof. Dr. Fakhir Raza Haidri
 
 ---
 
-## Overview
+## Validated Performance (SIUT cohort, n=253 patients)
 
-ICU-HemoPredict is a clinical decision support system that predicts hemodynamic instability in ICU patients using 48-hour time-series vital signs and laboratory data. The system uses a trained XGBoost classifier with SHAP-based explainability to generate per-slot risk scores and a full clinical interpretation report.
-
-**Validated performance (SIUT cohort, n=253 patients):**
-
-| Metric | Value |
-|---|---|
-| AUROC | 0.9891 |
-| Sensitivity | 98.38% |
-| Specificity | 95.24% |
-| PPV | 94.65% |
-| NPV | 98.56% |
-| Decision threshold | 47.74% |
+| Metric | 5-Fold CV | Held-out Test |
+|---|---|---|
+| AUROC | 0.9941 ± 0.0064 | 0.9928 |
+| Sensitivity | 96.67% ± 1.86% | 97.22% |
+| Specificity | 95.59% ± 4.87% | 95.24% |
+| F1 Score | 0.9588 ± 0.0198 | 0.9589 |
+| Brier Score | 0.0316 ± 0.0130 | 0.0346 |
 
 ---
 
@@ -30,43 +25,43 @@ ICU-HemoPredict is a clinical decision support system that predicts hemodynamic 
 ```
 icu_hemopredict/
   backend/
-    main.py                  FastAPI backend with exact feature engineering
-    xgb_final.pkl            Trained XGBoost model
-    feature_cols.npy         Feature column order (140 features)
-    clinical_threshold.npy   Decision threshold (0.4774)
+    main.py                      FastAPI backend — v3 ensemble
+    xgb_final_v3.pkl             XGBoost model (weight=0.2)
+    lgb_final_v3.pkl             LightGBM model (weight=0.7)
+    lr_final_v3.pkl              Logistic Regression (weight=0.1)
+    scaler_v3.pkl                StandardScaler for LR
+    selected_features_v3.npy    50 SHAP-selected feature names
+    ensemble_weights_v3.npy     [0.2, 0.7, 0.1]
+    ensemble_threshold_v3.npy   0.5 (decision threshold)
     requirements.txt
   frontend/
-    index.html               Standalone dashboard (no build step required)
-  start.sh                   One-command startup script
+    index.html                   Clinical dashboard (standalone HTML)
+  start.sh                       Linux/macOS startup script
+  start.bat                      Windows startup script
   README.md
 ```
 
 ---
 
-## Running locally (demo / poster presentation)
+## Running locally
 
-**Prerequisites:** Python 3.9+, pip
+**Requirements:** Python 3.9+
 
-```bash
-# 1. Install dependencies
-cd backend
-pip install -r requirements.txt
-
-# 2. Start the API server
-uvicorn main:app --host 0.0.0.0 --port 8000
-
-# 3. Open the dashboard
-# Open frontend/index.html in any browser
-# The dashboard connects to http://localhost:8000 automatically
-```
-
-Or use the startup script (macOS/Linux):
+### Linux / macOS
 ```bash
 chmod +x start.sh
 ./start.sh
 ```
 
-**The dashboard will show "API connected" in green when the backend is running.**
+### Windows
+```
+Double-click start.bat
+OR
+cd backend && python -m uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+Then open `frontend/index.html` in Chrome or Firefox.  
+The dashboard shows **API Online** in green when connected.
 
 ---
 
@@ -76,38 +71,42 @@ chmod +x start.sh
 |---|---|---|
 | `/` | GET | System info and model metadata |
 | `/health` | GET | Health check |
-| `/predict/stay` | POST | Full 48-hour patient stay prediction |
+| `/predict/stay` | POST | Full patient stay prediction |
 
-### Sample request
-
+### Example request
 ```bash
 curl -X POST http://localhost:8000/predict/stay \
   -H "Content-Type: application/json" \
   -d '{
     "readings": [
-      {"sbp":115,"dbp":72,"hr":88,"rr":18,"temp":37.2,"spo2":97,"fio2":21,
-       "uop":65,"avpu":0,"lact":1.2,"ph":7.40,"hco3":24,"k":4.0,"na":137,
-       "cre":0.9,"hct":34,"tlc":10,"plt":210,"bili":0.9,"crt":2},
+      {"sbp":115,"dbp":72,"hr":88,"rr":18,"temp":37.2,"spo2":97,
+       "fio2":21,"uop":65,"avpu":0,"lact":1.2,"ph":7.40,"hco3":24,
+       "k":4.0,"na":137,"cre":0.9,"hct":34,"tlc":10,"plt":210,
+       "bili":0.9,"crt":2},
       ...
     ],
-    "age":62,"gender":1,"dm":1,"htn":1,"ckd":1,"ihd":0,"copd":0,
-    "diagnosis":"sepsis_shock"
+    "age":62, "gender":1, "dm":1, "htn":1, "ckd":1,
+    "ihd":0, "copd":0, "diagnosis":"sepsis_shock"
   }'
 ```
 
 ---
 
-## Feature engineering
+## Model architecture
 
-The model uses 140 features derived from 20 raw parameters:
+**Ensemble:** XGBoost (w=0.2) + LightGBM (w=0.7) + Logistic Regression (w=0.1)  
+**Features:** 50 selected from 125 engineered features via SHAP importance ranking  
+**Input:** 2–24 time-point readings (2-hour intervals over 48 hours)  
+**Decision threshold:** 0.50  
 
-- **Raw vitals & labs (22):** AVPU, Temp, HR, RR, SBP, DBP, MAP, PP, SpO2, FiO2, CRT, UOP, pH, HCO3, K, Na, Creatinine, HCT, TLC, Platelets, Bilirubin, Lactate
-- **Rolling statistics (48):** 8-hour rolling mean, std, min, max for 12 parameters
-- **Rate-of-change features (24):** 1-step and 2-step deltas for 12 parameters
-- **Trend slopes (6):** Expanding linear slope for SBP, MAP, HR, Lactate, Creatinine, UOP
-- **Composite signals (7):** Shock Index, SpO2/FiO2 ratio, HCO3-Lactate gap, PP variation, Renal stress index, MAP deficit, Respiratory load
-- **Patient-level aggregates (14):** Worst-case values across the full stay
-- **Metadata (17):** Age, gender, comorbidities (DM/HTN/CKD/IHD/COPD), diagnosis category
+Feature groups:
+- Vital sign rolling statistics (8-hour window): mean, std, min, max
+- Rate-of-change delta features (1-step and 2-step)
+- Cumulative trend slopes
+- Composite clinical signals (Shock Index, SpO2/FiO2 ratio, HCO3-Lactate gap etc.)
+- Patient-level expanding aggregates (no future leakage — computed from slots 0..i only)
+- Static lab values at admission
+- Patient metadata (age, gender, comorbidities, diagnosis category)
 
 ---
 
@@ -119,11 +118,10 @@ The model uses 140 features derived from 20 raw parameters:
 | Hussain Raza | CS-22082 |
 | Mudasir Shaikh | CS-22135 |
 
-**Supervisor:** Dr. Syed Zaffar Qasim  
-**Industrial Advisor:** Prof. Dr. Fakhir Raza Haidri (SIUT)
-
 ---
 
 ## Disclaimer
 
-This system is a research prototype validated on a single-centre cohort. It is intended as a clinical decision support tool and does not replace clinical judgment. Prospective multi-centre validation is required before clinical deployment.
+Research prototype validated on a single-centre retrospective cohort.  
+Clinical decision support tool only — does not replace clinical judgment.  
+Prospective multi-centre validation required before clinical deployment.
