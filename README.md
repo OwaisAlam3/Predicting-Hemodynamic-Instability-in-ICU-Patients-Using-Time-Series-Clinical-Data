@@ -1,14 +1,12 @@
-# ICU-HemoPredict v3
+# ICU HemoPredict — Full SaaS Dashboard
 
-**Haemodynamic Instability Risk Prediction for ICU Patients**
-
-NED University of Engineering & Technology — Group 17, CS Batch 2022  
-Industrial Partner: Sindh Institute of Urology & Transplantation (SIUT), Karachi  
+**Haemodynamic Instability Risk Prediction for ICU Patients**  
+NEDUET × SIUT Karachi | CS Batch 2022 — Group 17  
 Supervisor: Dr. Syed Zaffar Qasim | Industrial Advisor: Prof. Dr. Fakhir Raza Haidri
 
 ---
 
-## Validated Performance (SIUT cohort, n=253 patients)
+## Validated Performance (SIUT Karachi, n=253)
 
 | Metric | 5-Fold CV | Held-out Test |
 |---|---|---|
@@ -20,93 +18,117 @@ Supervisor: Dr. Syed Zaffar Qasim | Industrial Advisor: Prof. Dr. Fakhir Raza Ha
 
 ---
 
-## Project structure
+## Project Structure
 
 ```
-icu_hemopredict/
+hemopredict/
   backend/
-    main.py                      FastAPI backend — v3 ensemble
-    xgb_final_v3.pkl             XGBoost model (weight=0.2)
-    lgb_final_v3.pkl             LightGBM model (weight=0.7)
-    lr_final_v3.pkl              Logistic Regression (weight=0.1)
-    scaler_v3.pkl                StandardScaler for LR
-    selected_features_v3.npy    50 SHAP-selected feature names
-    ensemble_weights_v3.npy     [0.2, 0.7, 0.1]
-    ensemble_threshold_v3.npy   0.5 (decision threshold)
+    main.py                     FastAPI backend — ensemble v3 + batch CSV endpoint
+    Dockerfile
     requirements.txt
+    *.pkl / *.npy               Model artifacts (copy from original deploy/)
   frontend/
-    index.html                   Clinical dashboard (standalone HTML)
-  start.sh                       Linux/macOS startup script
-  start.bat                      Windows startup script
-  README.md
+    src/
+      App.jsx                   Main app shell with routing
+      components/Sidebar.jsx    Navigation + session history
+      pages/Dashboard.jsx       Overview with stats and session table
+      pages/PatientInput.jsx    Multi-slot vitals entry + CSV import
+      pages/Results.jsx         Risk trajectory chart, SHAP, flags, reasoning
+      pages/BatchAnalysis.jsx   CSV batch upload and results table
+    Dockerfile                  Multi-stage: Node build + nginx serve
+    nginx.conf
+    package.json
+  docker-compose.yml            Full stack: backend + frontend
+  .env.example
 ```
 
 ---
 
-## Running locally
+## Option 1: Docker (Recommended — one command)
 
-**Requirements:** Python 3.9+
-
-### Linux / macOS
 ```bash
-chmod +x start.sh
-./start.sh
-```
+# 1. Copy model artifacts into backend/
+cp /path/to/original/deploy/backend/*.pkl  backend/
+cp /path/to/original/deploy/backend/*.npy  backend/
 
-### Windows
-```
-Double-click start.bat
-OR
-cd backend && python -m uvicorn main:app --host 0.0.0.0 --port 8000
-```
+# 2. Start everything
+docker-compose up --build
 
-Then open `frontend/index.html` in Chrome or Firefox.  
-The dashboard shows **API Online** in green when connected.
+# Frontend: http://localhost:3000
+# Backend API: http://localhost:8000
+# API Docs: http://localhost:8000/docs
+```
 
 ---
 
-## API endpoints
+## Option 2: Local Dev (No Docker)
+
+### Backend
+```bash
+cd backend
+pip install -r requirements.txt
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### Frontend
+```bash
+cd frontend
+npm install
+REACT_APP_API_URL=http://localhost:8000 npm start
+# Opens http://localhost:3000
+```
+
+---
+
+## Option 3: Cloud Deploy (Free Tier)
+
+### Backend → Render.com
+1. Push repo to GitHub
+2. New Web Service → select backend/ folder
+3. Runtime: Python 3.11 | Build: `pip install -r requirements.txt`
+4. Start: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+5. Copy the service URL (e.g. `https://hemopredict-api.onrender.com`)
+
+### Frontend → Vercel / Netlify
+1. New project → select frontend/ folder
+2. Build command: `npm run build` | Output: `build`
+3. Environment variable: `REACT_APP_API_URL=https://hemopredict-api.onrender.com`
+4. Deploy
+
+### Backend → Railway.app (Alternative)
+```bash
+cd backend
+railway init
+railway up
+```
+
+---
+
+## API Endpoints
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/` | GET | System info and model metadata |
+| `/` | GET | System metadata |
 | `/health` | GET | Health check |
-| `/predict/stay` | POST | Full patient stay prediction |
-
-### Example request
-```bash
-curl -X POST http://localhost:8000/predict/stay \
-  -H "Content-Type: application/json" \
-  -d '{
-    "readings": [
-      {"sbp":115,"dbp":72,"hr":88,"rr":18,"temp":37.2,"spo2":97,
-       "fio2":21,"uop":65,"avpu":0,"lact":1.2,"ph":7.40,"hco3":24,
-       "k":4.0,"na":137,"cre":0.9,"hct":34,"tlc":10,"plt":210,
-       "bili":0.9,"crt":2},
-      ...
-    ],
-    "age":62, "gender":1, "dm":1, "htn":1, "ckd":1,
-    "ihd":0, "copd":0, "diagnosis":"sepsis_shock"
-  }'
-```
+| `/predict/stay` | POST | Single patient multi-slot prediction |
+| `/predict/batch-csv` | POST | Batch CSV upload — multiple patients |
+| `/docs` | GET | Auto-generated Swagger UI |
 
 ---
 
-## Model architecture
+## Features
 
-**Ensemble:** XGBoost (w=0.2) + LightGBM (w=0.7) + Logistic Regression (w=0.1)  
-**Features:** 50 selected from 125 engineered features via SHAP importance ranking  
-**Input:** 2–24 time-point readings (2-hour intervals over 48 hours)  
-**Decision threshold:** 0.50  
-
-Feature groups:
-- Vital sign rolling statistics (8-hour window): mean, std, min, max
-- Rate-of-change delta features (1-step and 2-step)
-- Cumulative trend slopes
-- Composite clinical signals (Shock Index, SpO2/FiO2 ratio, HCO3-Lactate gap etc.)
-- Patient-level expanding aggregates (no future leakage — computed from slots 0..i only)
-- Static lab values at admission
-- Patient metadata (age, gender, comorbidities, diagnosis category)
+- **React SaaS Dashboard** — dark, clinical aesthetic with Syne + DM Mono typography
+- **Session History** — sidebar tracks up to 20 analyses per session
+- **Risk Trajectory Chart** — AreaChart showing probability over time with threshold lines
+- **Per-Slot Timeline** — individual slot risk cards with colour coding
+- **SHAP Feature Attribution** — diverging bar chart with XGBoost TreeSHAP
+- **Clinical Flags** — automated alerts for MAP, lactate, SpO₂, pH, etc.
+- **Clinical Reasoning Panel** — plain-language interpretation of model output
+- **Derived Haemodynamic Indices** — MAP, Shock Index, SF ratio, lactate, etc.
+- **CSV Import** — import time-series vitals directly into the input form
+- **Batch CSV Analysis** — upload multi-patient CSV, get risk table
+- **Export** — download individual result as JSON
 
 ---
 
